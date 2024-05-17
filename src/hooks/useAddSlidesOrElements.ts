@@ -106,6 +106,16 @@ export default () => {
     return true
   })
 
+  // 清空幻灯片
+  const deleteAllSlides = () => {
+    if (slides.value.length > 1) {
+      slides.map(slide => {
+        slidesStore.deleteSlide(slide.id)
+      })
+      addHistorySnapshot()
+    }
+  }
+
   return {
     addElementsFromData,
     addSlidesFromData,

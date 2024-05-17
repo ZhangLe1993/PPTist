@@ -22,14 +22,24 @@ export function getFontType(node, type, warpObj) {
 }
 
 export function getFontColor(node) {
+  // TODO
+  // title
+  //
+  // console.log(node)
   const color = getTextByPathList(node, ['a:rPr', 'a:solidFill', 'a:srgbClr', 'attrs', 'val'])
   return color ? `#${color}` : ''
 }
 
 export function getFontSize(node, slideLayoutSpNode, type, slideMasterTextStyles, fontsizeFactor) {
   let fontSize
+  try {
+    if (node['a:rPr']) fontSize = parseInt(node['a:rPr']['attrs']['sz']) / 100
+  }
+  catch (e) {
+    // console.error(e)
+    // ignore
+  }
 
-  if (node['a:rPr']) fontSize = parseInt(node['a:rPr']['attrs']['sz']) / 100
 
   if ((isNaN(fontSize) || !fontSize)) {
     const sz = getTextByPathList(slideLayoutSpNode, ['p:txBody', 'a:lstStyle', 'a:lvl1pPr', 'a:defRPr', 'attrs', 'sz'])

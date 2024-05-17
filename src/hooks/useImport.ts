@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import { parse, type Shape, type Element, type ChartItem } from 'pptxtojson'
+import { parse, type Shape, type Element, type ChartItem } from '../utils/fileImport/pptxtojson.js'
 import { nanoid } from 'nanoid'
 import { useSlidesStore } from '@/store'
 import { decrypt } from '@/utils/crypto'
@@ -37,9 +37,7 @@ export default () => {
     reader.addEventListener('load', () => {
       try {
         const slides = JSON.parse(decrypt(reader.result as string))
-        if (cover) slidesStore.setSlides(slides)
-        else if (isEmptySlide.value) slidesStore.setSlides(slides)
-        else addSlidesFromData(slides)
+        slidesStore.setSlides(slides)
       }
       catch {
         message.error('无法正确读取 / 解析该文件')
@@ -161,11 +159,11 @@ export default () => {
                 defaultColor: theme.value.fontColor,
                 content: el.content,
                 lineHeight: 1,
-                outline: {
+                /* outline: {
                   color: el.borderColor,
                   width: el.borderWidth,
                   style: el.borderType === 'solid' ? 'solid' : 'dashed',
-                },
+                },*/
                 fill: el.fillColor,
                 vertical: el.isVertical,
               }
@@ -232,6 +230,7 @@ export default () => {
                 
                 const element: PPTShapeElement = {
                   type: 'shape',
+                  shapeType: el.shapType,
                   id: nanoid(10),
                   width: el.width,
                   height: el.height,
@@ -242,11 +241,11 @@ export default () => {
                   fill: el.fillColor || 'none',
                   fixedRatio: false,
                   rotate: el.rotate,
-                  outline: {
+                  /* outline: {
                     color: el.borderColor,
                     width: el.borderWidth,
                     style: el.borderType === 'solid' ? 'solid' : 'dashed',
-                  },
+                  },*/
                   text: {
                     content: el.content,
                     defaultFontName: theme.value.fontName,
@@ -428,8 +427,93 @@ export default () => {
         parseElements(item.elements)
         slides.push(slide)
       }
-      if (isEmptySlide.value) slidesStore.setSlides(slides)
-      else addSlidesFromData(slides)
+
+      let newSlides: Slide[] = []
+      newSlides = slides.map((slide, index, arr) => {
+        console.log(slide.elements)
+        let elements = slide.elements
+        const map = new Map()
+        for (let i = 0; i < elements.length; i++) {
+          const element = elements[i]
+          if (element.type === 'shape') {
+            const left = element.left
+            const top = element.top
+            const width = element.width
+            const height = element.height
+            const midX = Math.floor(left + width / 2)
+            const midY = Math.floor(top + height / 2)
+            const cj = midX * midY
+            map.set(cj, element.shapeType)
+          }
+        }
+
+        elements = elements.map((element, index, arr) => {
+          if (element.type === 'image') {
+            const left = element.left
+            const top = element.top
+            const width = element.width
+            const height = element.height
+            const midX = Math.floor(left + width / 2)
+            const midY = Math.floor(top + height / 2)
+            const cj = midX * midY
+            if (map.has(cj) || map.has(cj - 1) || map.has(cj + 1)) {
+              const shapeType = map.get(cj)
+              // 按照圆形裁剪
+              if (shapeType === 'ellipse') {
+                element['clip'] = {
+                  shape: 'ellipse',
+                  range: [
+                    [
+                      0,
+                      0
+                    ],
+                    [
+                      100,
+                      100
+                    ]
+                  ]
+                }
+              }
+              if (shapeType === 'custom') {
+                element['clip'] = {
+                  shape: 'ellipse',
+                  range: [
+                    [
+                      0,
+                      0
+                    ],
+                    [
+                      100,
+                      100
+                    ]
+                  ]
+                }
+
+              }
+            }
+            else if (Math.abs(element.width - element.height) <= 1) {
+              element['clip'] = {
+                shape: 'ellipse',
+                range: [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ]
+              }
+            }
+          }
+          return element
+        })
+        slide.elements = elements
+
+        return slide
+      })
+      slidesStore.setSlides(newSlides)
       exporting.value = false
     }
     reader.readAsArrayBuffer(file)

@@ -111,18 +111,16 @@ export function getBgGradientFill(bgPr, phClr, slideMasterContent, warpObj) {
 }
 
 export async function getSlideBackgroundFill(warpObj) {
+  // debugger
   const slideContent = warpObj['slideContent']
   const slideLayoutContent = warpObj['slideLayoutContent']
   const slideMasterContent = warpObj['slideMasterContent']
-  
-  let bgPr = getTextByPathList(slideContent, ['p:sld', 'p:cSld', 'p:bg', 'p:bgPr'])
 
+  let bgPr = getTextByPathList(slideContent, ['p:sld', 'p:cSld', 'p:bg', 'p:bgPr'])
   let background = '#fff'
   let backgroundType = 'color'
-
   if (bgPr) {
     const bgFillTyp = getFillType(bgPr)
-
     if (bgFillTyp === 'SOLID_FILL') {
       const sldFill = bgPr['a:solidFill']
       let clrMapOvr
@@ -146,6 +144,7 @@ export async function getSlideBackgroundFill(warpObj) {
         backgroundType = 'gradient'
       }
     }
+
     else if (bgFillTyp === 'PIC_FILL') {
       background = await getBgPicFill(bgPr, 'slideBg', warpObj)
       backgroundType = 'image'
@@ -153,7 +152,6 @@ export async function getSlideBackgroundFill(warpObj) {
   }
   else {
     bgPr = getTextByPathList(slideLayoutContent, ['p:sldLayout', 'p:cSld', 'p:bg', 'p:bgPr'])
-
     let clrMapOvr
     const sldClrMapOvr = getTextByPathList(slideLayoutContent, ['p:sldLayout', 'p:clrMapOvr', 'a:overrideClrMapping', 'attrs'])
     if (sldClrMapOvr) clrMapOvr = sldClrMapOvr
@@ -183,7 +181,6 @@ export async function getSlideBackgroundFill(warpObj) {
     }
     else {
       bgPr = getTextByPathList(slideMasterContent, ['p:sldMaster', 'p:cSld', 'p:bg', 'p:bgPr'])
-
       const clrMap = getTextByPathList(slideMasterContent, ['p:sldMaster', 'p:clrMap', 'attrs'])
       if (bgPr) {
         const bgFillTyp = getFillType(bgPr)

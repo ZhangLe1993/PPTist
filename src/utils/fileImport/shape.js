@@ -31,6 +31,23 @@ export function shapeArc(cX, cY, rX, rY, stAng, endAng, isClose) {
   return dData
 }
 
+export function getSystemShapePath(shapeType, w, h) {
+  let path = ""
+  switch (shapeType) {
+    case "rect" :
+      path = "M 0 0 L 200 0 L 200 200 L 0 200 Z"
+      break
+    case "ellipse":
+      path = "M 100 0 A 50 50 0 1 1 100 200 A 50 50 0 1 1 100 0 Z"
+      break
+    case "roundRect":
+      // 计算 forum
+      const radius = Math.min(w, h) * 0.125
+      path = `M ${radius} 0 L ${w - radius} 0 Q ${w} 0 ${w} ${radius} L ${w} ${h - radius} Q ${w} ${h} ${w - radius} ${h} L ${radius} ${h} Q 0 ${h} 0 ${h - radius} L 0 ${radius} Q 0 0 ${radius} 0 Z`
+  }
+  return path
+}
+
 export function getCustomShapePath(custShapType, w, h) {
   const pathLstNode = getTextByPathList(custShapType, ['a:pathLst'])
   let pathNodes = getTextByPathList(pathLstNode, ['a:path'])

@@ -6,8 +6,17 @@ import { getChartInfo } from './chart'
 import { getVerticalAlign } from './align'
 import { getPosition, getSize } from './position'
 import { genTextBody } from './text'
-import { getCustomShapePath } from './shape'
-import { extractFileExtension, base64ArrayBuffer, getTextByPathList, angleToDegrees, getMimeType, isVideoLink, escapeHtml } from './utils'
+import {getCustomShapePath, getSystemShapePath} from './shape'
+import {
+  extractFileExtension,
+  base64ArrayBuffer,
+  getTextByPathList,
+  angleToDegrees,
+  getMimeType,
+  isVideoLink,
+  escapeHtml,
+  arrayBufferToBase64, convertBlobToBase64
+} from './utils'
 import { getShadow } from './shadow'
 
 export async function parse(file, options = {}) {
@@ -250,6 +259,15 @@ async function processSingleSlide(zip, sldFileName, themeContent, defaultTextSty
 
   const slideContent = await readXmlFile(zip, sldFileName)
   const nodes = slideContent['p:sld']['p:cSld']['p:spTree']
+
+  // const masterContent = await  readXmlFile(zip, "ppt/slideMasters/slideMaster1.xml")
+  const masterNodes = slideMasterContent['p:sldMaster']['p:cSld']['p:spTree']
+
+  console.log(slideMasterContent)
+  const layoutNodes = slideLayoutContent['p:sldLayout']['p:cSld']['p:spTree']
+  // const layoutNodes = slideLayoutContent['p:sldMaster']['p:cSld']['p:spTree']
+  // console.log(layoutNodes)
+
   const warpObj = {
     zip,
     slideLayoutContent,
@@ -273,6 +291,36 @@ async function processSingleSlide(zip, sldFileName, themeContent, defaultTextSty
   const bgColor = await getSlideBackgroundFill(warpObj)
 
   const elements = []
+
+  // 处理 master
+  for (const nodeKey in masterNodes) {
+    if (masterNodes[nodeKey].constructor === Array) {
+      for (const node of masterNodes[nodeKey]) {
+        const ret = await processNodesInSlide(nodeKey, node, warpObj, 'slideMasterBg')
+        if (ret) elements.push(ret)
+      }
+    }
+    else {
+      const ret = await processNodesInSlide(nodeKey, masterNodes[nodeKey], warpObj, 'slideMasterBg')
+      if (ret) elements.push(ret)
+    }
+  }
+
+  // 处理 Layout
+  for (const nodeKey in layoutNodes) {
+    if (layoutNodes[nodeKey].constructor === Array) {
+      for (const node of layoutNodes[nodeKey]) {
+        const ret = await processNodesInSlide(nodeKey, node, warpObj, 'slideLayoutBg')
+        if (ret) elements.push(ret)
+      }
+    }
+    else {
+      const ret = await processNodesInSlide(nodeKey, layoutNodes[nodeKey], warpObj, 'slideLayoutBg')
+      if (ret) elements.push(ret)
+    }
+  }
+
+  // 处理 slide
   for (const nodeKey in nodes) {
     if (nodes[nodeKey].constructor === Array) {
       for (const node of nodes[nodeKey]) {
@@ -289,6 +337,55 @@ async function processSingleSlide(zip, sldFileName, themeContent, defaultTextSty
   return {
     fill: bgColor,
     elements,
+  }
+}
+
+async function processMasterPicNode(node, warpObj,) {
+  const masterResObj = warpObj['masterResObj']
+  const layoutResObj = warpObj['layoutResObj']
+  const rid = node['p:blipFill']['a:blip']['attrs']['r:embed']
+  console.log(rid)
+  let imgName
+  if (layoutResObj === undefined || layoutResObj === null || layoutResObj[rid] === undefined || layoutResObj[rid] === null) {
+    imgName = masterResObj[rid]['target']
+  }
+  else {
+    imgName = layoutResObj[rid]['target']
+  }
+  // console.log(imgName)
+  const imgFileExt = extractFileExtension(imgName).toLowerCase()
+  const zip = warpObj['zip']
+  const imgArrayBuffer = await zip.file(imgName).async('arraybuffer')
+  // const base64 = await zip.file(imgName).async('base64')
+  // const imageData = await zip.file(imgName).async('blob');
+  // const base64String = await convertBlobToBase64(imageData);
+  // console.log(base64String)
+
+  const xfrmNode = node['p:spPr']['a:xfrm']
+
+  const mimeType = getMimeType(imgFileExt)
+  const { top, left } = getPosition(xfrmNode, undefined, undefined, warpObj.options.slideFactor)
+  const { width, height } = getSize(xfrmNode, undefined, undefined, warpObj.options.slideFactor)
+  const src = `data:${mimeType};base64,${arrayBufferToBase64(imgArrayBuffer)}`
+
+  const isFlipV = getTextByPathList(xfrmNode, ['attrs', 'flipV']) === '1'
+  const isFlipH = getTextByPathList(xfrmNode, ['attrs', 'flipH']) === '1'
+
+  let rotate = 0
+  const rotateNode = getTextByPathList(node, ['p:spPr', 'a:xfrm', 'attrs', 'rot'])
+  if (rotateNode) rotate = angleToDegrees(rotateNode)
+
+  return {
+    type: 'image',
+    lock: true,
+    top,
+    left,
+    width,
+    height,
+    rotate,
+    src,
+    isFlipV,
+    isFlipH
   }
 }
 
@@ -452,7 +549,56 @@ async function processGroupSpNode(node, warpObj, source) {
   }
 }
 
+async function processMasterGroupSpNode(node, warpObj, source) {
+  const xfrmNode = getTextByPathList(node, ['p:grpSpPr', 'a:xfrm'])
+  if (!xfrmNode) return null
+
+  const x = parseInt(xfrmNode['a:off']['attrs']['x']) * warpObj.options.slideFactor
+  const y = parseInt(xfrmNode['a:off']['attrs']['y']) * warpObj.options.slideFactor
+  // https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.drawing.childoffset?view=openxml-2.8.1
+  const chx = parseInt(xfrmNode['a:chOff']['attrs']['x']) * warpObj.options.slideFactor
+  const chy = parseInt(xfrmNode['a:chOff']['attrs']['y']) * warpObj.options.slideFactor
+  const cx = parseInt(xfrmNode['a:ext']['attrs']['cx']) * warpObj.options.slideFactor
+  const cy = parseInt(xfrmNode['a:ext']['attrs']['cy']) * warpObj.options.slideFactor
+  // https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.drawing.childextents?view=openxml-2.8.1
+  const chcx = parseInt(xfrmNode['a:chExt']['attrs']['cx']) * warpObj.options.slideFactor
+  const chcy = parseInt(xfrmNode['a:chExt']['attrs']['cy']) * warpObj.options.slideFactor
+  // children coordinate
+  const ws = cx / chcx
+  const hs = cy / chcy
+
+  const elements = []
+  for (const nodeKey in node) {
+    if (node[nodeKey].constructor === Array) {
+      for (const item of node[nodeKey]) {
+        const ret = await processNodesInSlide(nodeKey, item, warpObj, source)
+        if (ret) elements.push(ret)
+      }
+    }
+    else {
+      const ret = await processNodesInSlide(nodeKey, node[nodeKey], warpObj, source)
+      if (ret) elements.push(ret)
+    }
+  }
+
+  return {
+    type: 'group',
+    top: parseFloat(y.toFixed(2)),
+    left: parseFloat(x.toFixed(2)),
+    width: parseFloat(cx.toFixed(2)),
+    height: parseFloat(cy.toFixed(2)),
+    elements: elements.map(element => ({
+      ...element,
+      left: parseFloat(((element.left - chx) * ws).toFixed(2)),
+      top: parseFloat(((element.top - chy) * hs).toFixed(2)),
+      width: parseFloat((element.width * ws).toFixed(2)),
+      height: parseFloat((element.height * hs).toFixed(2)),
+    }))
+  }
+}
+
 function processSpNode(node, warpObj, source) {
+  // fix
   const name = getTextByPathList(node, ['p:nvSpPr', 'p:cNvPr', 'attrs', 'name'])
   const idx = getTextByPathList(node, ['p:nvSpPr', 'p:nvPr', 'p:ph', 'attrs', 'idx'])
   let type = getTextByPathList(node, ['p:nvSpPr', 'p:nvPr', 'p:ph', 'attrs', 'type'])
@@ -486,23 +632,40 @@ function processSpNode(node, warpObj, source) {
     else type = 'obj'
   }
 
+  if (source === 'slideMasterBg' && (type === 'text' || type === 'title' || type === 'body')) {
+    return null
+  }
+  if (source === 'slideLayoutBg' && (type === 'text' || type === 'title' || type === 'body')) {
+    return null
+  }
+
   return genShape(node, slideLayoutSpNode, slideMasterSpNode, name, type, warpObj)
 }
 
-function processCxnSpNode(node, warpObj) {
+function processCxnSpNode(node, warpObj, source) {
+
   const name = node['p:nvCxnSpPr']['p:cNvPr']['attrs']['name']
   const type = (node['p:nvCxnSpPr']['p:nvPr']['p:ph'] === undefined) ? undefined : node['p:nvSpPr']['p:nvPr']['p:ph']['attrs']['type']
-
+  if (source === 'slideMasterBg' && (type === 'text' || type === 'title' || type === 'body')) {
+    return null
+  }
+  if (source === 'slideLayoutBg' && (type === 'text' || type === 'title' || type === 'body')) {
+    return null
+  }
   return genShape(node, undefined, undefined, name, type, warpObj)
 }
 
 function genShape(node, slideLayoutSpNode, slideMasterSpNode, name, type, warpObj) {
+
   const xfrmList = ['p:spPr', 'a:xfrm']
   const slideXfrmNode = getTextByPathList(node, xfrmList)
   const slideLayoutXfrmNode = getTextByPathList(slideLayoutSpNode, xfrmList)
   const slideMasterXfrmNode = getTextByPathList(slideMasterSpNode, xfrmList)
 
   const shapType = getTextByPathList(node, ['p:spPr', 'a:prstGeom', 'attrs', 'prst'])
+  if (name === '副标题 12') {
+
+  }
   const custShapType = getTextByPathList(node, ['p:spPr', 'a:custGeom'])
 
   const { top, left } = getPosition(slideXfrmNode, slideLayoutXfrmNode, slideMasterXfrmNode, warpObj.options.slideFactor)
@@ -526,6 +689,16 @@ function genShape(node, slideLayoutSpNode, slideMasterSpNode, name, type, warpOb
 
   const { borderColor, borderWidth, borderType, strokeDasharray } = getBorder(node, type, warpObj)
   const fillColor = getShapeFill(node, undefined, warpObj) || ''
+  if (node['p:txBody'] && fillColor === '') {
+    const ar = node['p:txBody']['a:p']['a:r']
+    let itemStyle
+    if (ar instanceof Array) {
+      itemStyle = ar[0]
+    }
+    else {
+      itemStyle = ar
+    }
+  }
 
   let shadow
   const outerShdwNode = getTextByPathList(node, ['p:spPr', 'a:effectLst', 'a:outerShdw'])
@@ -533,7 +706,6 @@ function genShape(node, slideLayoutSpNode, slideMasterSpNode, name, type, warpOb
 
   const vAlign = getVerticalAlign(node, slideLayoutSpNode, slideMasterSpNode, type)
   const isVertical = getTextByPathList(node, ['p:txBody', 'a:bodyPr', 'attrs', 'vert']) === 'eaVert'
-
   const data = {
     left,
     top,
@@ -553,7 +725,6 @@ function genShape(node, slideLayoutSpNode, slideMasterSpNode, name, type, warpOb
   }
 
   if (shadow) data.shadow = shadow
-
   if (custShapType && type !== 'diagram') {
     const ext = getTextByPathList(slideXfrmNode, ['a:ext', 'attrs'])
     const w = parseInt(ext['cx']) * warpObj.options.slideFactor
@@ -567,13 +738,15 @@ function genShape(node, slideLayoutSpNode, slideMasterSpNode, name, type, warpOb
       path: d,
     }
   }
-  if (shapType && type !== 'text') {
-    return {
+  if (shapType && type !== 'text' && type !== 'title' && type !== 'body') {
+    const result = {
       ...data,
       type: 'shape',
       shapType,
     }
+    return result
   }
+
   return {
     ...data,
     type: 'text',
@@ -584,21 +757,143 @@ function genShape(node, slideLayoutSpNode, slideMasterSpNode, name, type, warpOb
 
 async function processPicNode(node, warpObj, source) {
   let resObj
-  if (source === 'slideMasterBg') resObj = warpObj['masterResObj']
-  else if (source === 'slideLayoutBg') resObj = warpObj['layoutResObj']
-  else resObj = warpObj['slideResObj']
-  
+  try {
+    if (source === 'slideMasterBg') resObj = warpObj['masterResObj']
+    else if (source === 'slideLayoutBg') resObj = warpObj['layoutResObj']
+    else resObj = warpObj['slideResObj']
+    console.log('KKKK:', node)
+
+    const rid = node['p:blipFill']['a:blip']['attrs']['r:embed']
+    const imgName = resObj[rid]['target']
+    const imgFileExt = extractFileExtension(imgName).toLowerCase()
+    const zip = warpObj['zip']
+    const imgArrayBuffer = await zip.file(imgName).async('arraybuffer')
+    const xfrmNode = node['p:spPr']['a:xfrm']
+
+    const mimeType = getMimeType(imgFileExt)
+    const { top, left } = getPosition(xfrmNode, undefined, undefined, warpObj.options.slideFactor)
+    const { width, height } = getSize(xfrmNode, undefined, undefined, warpObj.options.slideFactor)
+    const src = `data:${mimeType};base64,${base64ArrayBuffer(imgArrayBuffer)}`
+
+    const isFlipV = getTextByPathList(xfrmNode, ['attrs', 'flipV']) === '1'
+    const isFlipH = getTextByPathList(xfrmNode, ['attrs', 'flipH']) === '1'
+
+    let rotate = 0
+    const rotateNode = getTextByPathList(node, ['p:spPr', 'a:xfrm', 'attrs', 'rot'])
+    if (rotateNode) rotate = angleToDegrees(rotateNode)
+
+    const videoNode = getTextByPathList(node, ['p:nvPicPr', 'p:nvPr', 'a:videoFile'])
+    let videoRid, videoFile, videoFileExt, videoMimeType, uInt8ArrayVideo, videoBlob
+    let isVdeoLink = false
+
+    if (videoNode) {
+      videoRid = videoNode['attrs']['r:link']
+      videoFile = resObj[videoRid]['target']
+      if (isVideoLink(videoFile)) {
+        videoFile = escapeHtml(videoFile)
+        isVdeoLink = true
+      }
+      else {
+        videoFileExt = extractFileExtension(videoFile).toLowerCase()
+        if (videoFileExt === 'mp4' || videoFileExt === 'webm' || videoFileExt === 'ogg') {
+          uInt8ArrayVideo = await zip.file(videoFile).async('arraybuffer')
+          videoMimeType = getMimeType(videoFileExt)
+          videoBlob = URL.createObjectURL(new Blob([uInt8ArrayVideo], {
+            type: videoMimeType
+          }))
+        }
+      }
+    }
+
+    const audioNode = getTextByPathList(node, ['p:nvPicPr', 'p:nvPr', 'a:audioFile'])
+    let audioRid, audioFile, audioFileExt, uInt8ArrayAudio, audioBlob
+    if (audioNode) {
+      audioRid = audioNode['attrs']['r:link']
+      audioFile = resObj[audioRid]['target']
+      audioFileExt = extractFileExtension(audioFile).toLowerCase()
+      if (audioFileExt === 'mp3' || audioFileExt === 'wav' || audioFileExt === 'ogg') {
+        uInt8ArrayAudio = await zip.file(audioFile).async('arraybuffer')
+        audioBlob = URL.createObjectURL(new Blob([uInt8ArrayAudio]))
+      }
+    }
+
+    if (videoNode && !isVdeoLink) {
+      return {
+        type: 'video',
+        top,
+        left,
+        width,
+        height,
+        rotate,
+        blob: videoBlob,
+      }
+    }
+    if (videoNode && isVdeoLink) {
+      return {
+        type: 'video',
+        top,
+        left,
+        width,
+        height,
+        rotate,
+        src: videoFile,
+      }
+    }
+    if (audioNode) {
+      return {
+        type: 'audio',
+        top,
+        left,
+        width,
+        height,
+        rotate,
+        blob: audioBlob,
+      }
+    }
+    return {
+      type: 'image',
+      lock: true,
+      top,
+      left,
+      width,
+      height,
+      rotate,
+      src,
+      isFlipV,
+      isFlipH
+    }
+  }
+  catch (e) {
+    return null
+  }
+}
+
+async function processMasterShapeNode(node, warpObj,) {
+  const masterResObj = warpObj['masterResObj']
+  const layoutResObj = warpObj['layoutResObj']
   const rid = node['p:blipFill']['a:blip']['attrs']['r:embed']
-  const imgName = resObj[rid]['target']
+  let imgName
+  if (layoutResObj === undefined || layoutResObj === null || layoutResObj[rid] === undefined || layoutResObj[rid] === null) {
+    imgName = masterResObj[rid]['target']
+  }
+  else {
+    imgName = layoutResObj[rid]['target']
+  }
+  // console.log(imgName)
   const imgFileExt = extractFileExtension(imgName).toLowerCase()
   const zip = warpObj['zip']
   const imgArrayBuffer = await zip.file(imgName).async('arraybuffer')
+  // const base64 = await zip.file(imgName).async('base64')
+  // const imageData = await zip.file(imgName).async('blob');
+  // const base64String = await convertBlobToBase64(imageData);
+  // console.log(base64String)
+
   const xfrmNode = node['p:spPr']['a:xfrm']
 
   const mimeType = getMimeType(imgFileExt)
   const { top, left } = getPosition(xfrmNode, undefined, undefined, warpObj.options.slideFactor)
   const { width, height } = getSize(xfrmNode, undefined, undefined, warpObj.options.slideFactor)
-  const src = `data:${mimeType};base64,${base64ArrayBuffer(imgArrayBuffer)}`
+  const src = `data:${mimeType};base64,${arrayBufferToBase64(imgArrayBuffer)}`
 
   const isFlipV = getTextByPathList(xfrmNode, ['attrs', 'flipV']) === '1'
   const isFlipH = getTextByPathList(xfrmNode, ['attrs', 'flipH']) === '1'
@@ -607,79 +902,12 @@ async function processPicNode(node, warpObj, source) {
   const rotateNode = getTextByPathList(node, ['p:spPr', 'a:xfrm', 'attrs', 'rot'])
   if (rotateNode) rotate = angleToDegrees(rotateNode)
 
-  const videoNode = getTextByPathList(node, ['p:nvPicPr', 'p:nvPr', 'a:videoFile'])
-  let videoRid, videoFile, videoFileExt, videoMimeType, uInt8ArrayVideo, videoBlob
-  let isVdeoLink = false
-
-  if (videoNode) {
-    videoRid = videoNode['attrs']['r:link']
-    videoFile = resObj[videoRid]['target']
-    if (isVideoLink(videoFile)) {
-      videoFile = escapeHtml(videoFile)
-      isVdeoLink = true
-    } 
-    else {
-      videoFileExt = extractFileExtension(videoFile).toLowerCase()
-      if (videoFileExt === 'mp4' || videoFileExt === 'webm' || videoFileExt === 'ogg') {
-        uInt8ArrayVideo = await zip.file(videoFile).async('arraybuffer')
-        videoMimeType = getMimeType(videoFileExt)
-        videoBlob = URL.createObjectURL(new Blob([uInt8ArrayVideo], {
-          type: videoMimeType
-        }))
-      }
-    }
-  }
-
-  const audioNode = getTextByPathList(node, ['p:nvPicPr', 'p:nvPr', 'a:audioFile'])
-  let audioRid, audioFile, audioFileExt, uInt8ArrayAudio, audioBlob
-  if (audioNode) {
-    audioRid = audioNode['attrs']['r:link']
-    audioFile = resObj[audioRid]['target']
-    audioFileExt = extractFileExtension(audioFile).toLowerCase()
-    if (audioFileExt === 'mp3' || audioFileExt === 'wav' || audioFileExt === 'ogg') {
-      uInt8ArrayAudio = await zip.file(audioFile).async('arraybuffer')
-      audioBlob = URL.createObjectURL(new Blob([uInt8ArrayAudio]))
-    }
-  }
-
-  if (videoNode && !isVdeoLink) {
-    return {
-      type: 'video',
-      top,
-      left,
-      width, 
-      height,
-      rotate,
-      blob: videoBlob,
-    }
-  } 
-  if (videoNode && isVdeoLink) {
-    return {
-      type: 'video',
-      top,
-      left,
-      width, 
-      height,
-      rotate,
-      src: videoFile,
-    }
-  }
-  if (audioNode) {
-    return {
-      type: 'audio',
-      top,
-      left,
-      width, 
-      height,
-      rotate,
-      blob: audioBlob,
-    }
-  }
   return {
     type: 'image',
+    lock: true,
     top,
     left,
-    width, 
+    width,
     height,
     rotate,
     src,

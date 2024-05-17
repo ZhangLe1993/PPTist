@@ -323,6 +323,7 @@ export interface ShapeText {
  */
 export interface PPTShapeElement extends PPTBaseElement {
   type: 'shape'
+  shapeType: string
   viewBox: [number, number]
   path: string
   fixedRatio: boolean

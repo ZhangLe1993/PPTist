@@ -18,6 +18,20 @@ export function genTextBody(textBodyNode, spNode, slideLayoutSpNode, type, warpO
   if (!textBodyNode) return ''
 
   let text = ''
+  let color
+  try {
+    color = textBodyNode['a:lstStyle']['a:lvl1pPr']['a:defRPr']['a:solidFill']['a:srgbClr']['attrs']['val'];
+  }
+  catch (e) {
+    // ignore
+    try {
+      color = textBodyNode['a:p']['a:pPr']['a:defRPr']['a:solidFill']['a:srgbClr']['attrs']['val'];
+    }
+    catch (ex) {
+      // ignore
+    }
+  }
+  // console.log(color)
 
   const pNode = textBodyNode['a:p']
   const pNodes = pNode.constructor === Array ? pNode : [pNode]
@@ -71,16 +85,17 @@ export function genTextBody(textBodyNode, spNode, slideLayoutSpNode, type, warpO
       text += `<p style="text-align: ${align};">`
     }
     
-    if (!rNode) text += genSpanElement(pNode, slideLayoutSpNode, type, warpObj)
+    if (!rNode) text += genSpanElement(pNode, slideLayoutSpNode, type, warpObj, color)
     else {
       for (const rNodeItem of rNode) {
-        text += genSpanElement(rNodeItem, slideLayoutSpNode, type, warpObj)
+        text += genSpanElement(rNodeItem, slideLayoutSpNode, type, warpObj, color)
       }
     }
 
     if (listType) text += '</li>'
     else text += '</p>'
   }
+  console.log(text)
   return text
 }
 
@@ -94,7 +109,7 @@ export function getListType(node) {
   return ''
 }
 
-export function genSpanElement(node, slideLayoutSpNode, type, warpObj) {
+export function genSpanElement(node, slideLayoutSpNode, type, warpObj, color) {
   const slideMasterTextStyles = warpObj['slideMasterTextStyles']
 
   let text = node['a:t']
@@ -102,7 +117,11 @@ export function genSpanElement(node, slideLayoutSpNode, type, warpObj) {
   if (typeof text !== 'string') text = '&nbsp;'
 
   let styleText = ''
-  const fontColor = getFontColor(node)
+  let fontColor = getFontColor(node)
+  console.log(fontColor)
+  if ((fontColor === undefined || fontColor === null || fontColor === '') && color !== undefined && color !== null && color !== '') {
+    fontColor = "#" + color
+  }
   const fontSize = getFontSize(node, slideLayoutSpNode, type, slideMasterTextStyles, warpObj.options.fontsizeFactor)
   const fontType = getFontType(node, type, warpObj)
   const fontBold = getFontBold(node)

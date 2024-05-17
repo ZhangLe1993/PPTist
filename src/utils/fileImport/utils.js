@@ -35,6 +35,29 @@ export function base64ArrayBuffer(arrayBuffer) {
   return base64
 }
 
+export function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
+// 将 Blob 对象转换为 base64 字符串
+export function convertBlobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve(reader.result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+
 export function extractFileExtension(filename) {
   return filename.substr((~-filename.lastIndexOf('.') >>> 0) + 2)
 }

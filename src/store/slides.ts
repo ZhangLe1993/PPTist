@@ -39,6 +39,7 @@ export const useSlidesStore = defineStore('slides', {
     viewportRatio: 0.5625, // 可视区域比例，默认16:9
   }),
 
+
   getters: {
     currentSlide(state) {
       return state.slides[state.slideIndex]
@@ -178,7 +179,7 @@ export const useSlidesStore = defineStore('slides', {
       const slideIndex = slideId ? this.slides.findIndex(item => item.id === slideId) : this.slideIndex
       const slide = this.slides[slideIndex]
       const elements = slide.elements.map(el => {
-        return elIdList.includes(el.id) ? { ...el, ...props } : el
+        return elIdList !== undefined && elIdList.includes(el.id) ? { ...el, ...props } : el
       })
       this.slides[slideIndex].elements = (elements as PPTElement[])
     },
