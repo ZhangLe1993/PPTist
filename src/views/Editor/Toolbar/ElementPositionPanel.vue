@@ -50,7 +50,7 @@
       </NumberInput>
     </div>
 
-    <template v-if="handleElement!.type !== 'line'">
+    <template v-if="handleElement !== undefined && handleElement !== null && handleElement!.type !== 'line'">
       <div class="row">
         <NumberInput
           :min="minSize"
@@ -86,7 +86,7 @@
       </div>
     </template>
 
-    <template v-if="!['line', 'video', 'audio'].includes(handleElement!.type)">
+    <template v-if="handleElement !== undefined && handleElement !== null && !['line', 'video', 'audio'].includes(handleElement!.type)">
       <Divider />
 
       <div class="row">

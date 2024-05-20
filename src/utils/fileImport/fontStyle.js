@@ -30,7 +30,7 @@ export function getFontColor(node) {
   return color ? `#${color}` : ''
 }
 
-export function getFontSize(node, slideLayoutSpNode, type, slideMasterTextStyles, fontsizeFactor) {
+export function getFontSize(node, slideLayoutSpNode, type, slideMasterTextStyles, fontsizeFactor, realSize) {
   let fontSize
   try {
     if (node['a:rPr']) fontSize = parseInt(node['a:rPr']['attrs']['sz']) / 100
@@ -38,8 +38,12 @@ export function getFontSize(node, slideLayoutSpNode, type, slideMasterTextStyles
   catch (e) {
     // console.error(e)
     // ignore
+    fontSize = realSize
   }
 
+  if (isNaN(fontSize) || !fontSize) {
+    fontSize = realSize
+  }
 
   if ((isNaN(fontSize) || !fontSize)) {
     const sz = getTextByPathList(slideLayoutSpNode, ['p:txBody', 'a:lstStyle', 'a:lvl1pPr', 'a:defRPr', 'attrs', 'sz'])

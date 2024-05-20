@@ -26,7 +26,6 @@ const { databaseId } = storeToRefs(mainStore)
 const { screening } = storeToRefs(useScreenStore())
 
 const slidesStore = useSlidesStore()
-console.log(JSON.stringify(slidesStore.slides))
 
 if (import.meta.env.MODE !== 'development') {
   window.onbeforeunload = () => false

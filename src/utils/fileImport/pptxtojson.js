@@ -1,23 +1,23 @@
 import JSZip from 'jszip'
-import { readXmlFile } from './readXmlFile'
-import { getBorder } from './border'
-import { getSlideBackgroundFill, getShapeFill, getSolidFill } from './fill'
-import { getChartInfo } from './chart'
-import { getVerticalAlign } from './align'
-import { getPosition, getSize } from './position'
-import { genTextBody } from './text'
-import {getCustomShapePath, getSystemShapePath} from './shape'
+import {readXmlFile} from './readXmlFile'
+import {getBorder} from './border'
+import {getShapeFill, getSlideBackgroundFill, getSolidFill} from './fill'
+import {getChartInfo} from './chart'
+import {getVerticalAlign} from './align'
+import {getPosition, getSize} from './position'
+import {genTextBody} from './text'
+import {getCustomShapePath} from './shape'
 import {
-  extractFileExtension,
-  base64ArrayBuffer,
-  getTextByPathList,
   angleToDegrees,
-  getMimeType,
-  isVideoLink,
+  arrayBufferToBase64,
+  base64ArrayBuffer,
   escapeHtml,
-  arrayBufferToBase64, convertBlobToBase64
+  extractFileExtension,
+  getMimeType,
+  getTextByPathList,
+  isVideoLink
 } from './utils'
-import { getShadow } from './shadow'
+import {getShadow} from './shadow'
 
 export async function parse(file, options = {}) {
   const defaultOptions = {
@@ -260,13 +260,9 @@ async function processSingleSlide(zip, sldFileName, themeContent, defaultTextSty
   const slideContent = await readXmlFile(zip, sldFileName)
   const nodes = slideContent['p:sld']['p:cSld']['p:spTree']
 
-  // const masterContent = await  readXmlFile(zip, "ppt/slideMasters/slideMaster1.xml")
   const masterNodes = slideMasterContent['p:sldMaster']['p:cSld']['p:spTree']
 
-  console.log(slideMasterContent)
   const layoutNodes = slideLayoutContent['p:sldLayout']['p:cSld']['p:spTree']
-  // const layoutNodes = slideLayoutContent['p:sldMaster']['p:cSld']['p:spTree']
-  // console.log(layoutNodes)
 
   const warpObj = {
     zip,
@@ -344,7 +340,6 @@ async function processMasterPicNode(node, warpObj,) {
   const masterResObj = warpObj['masterResObj']
   const layoutResObj = warpObj['layoutResObj']
   const rid = node['p:blipFill']['a:blip']['attrs']['r:embed']
-  console.log(rid)
   let imgName
   if (layoutResObj === undefined || layoutResObj === null || layoutResObj[rid] === undefined || layoutResObj[rid] === null) {
     imgName = masterResObj[rid]['target']
@@ -352,14 +347,12 @@ async function processMasterPicNode(node, warpObj,) {
   else {
     imgName = layoutResObj[rid]['target']
   }
-  // console.log(imgName)
   const imgFileExt = extractFileExtension(imgName).toLowerCase()
   const zip = warpObj['zip']
   const imgArrayBuffer = await zip.file(imgName).async('arraybuffer')
   // const base64 = await zip.file(imgName).async('base64')
   // const imageData = await zip.file(imgName).async('blob');
   // const base64String = await convertBlobToBase64(imageData);
-  // console.log(base64String)
 
   const xfrmNode = node['p:spPr']['a:xfrm']
 
@@ -663,14 +656,12 @@ function genShape(node, slideLayoutSpNode, slideMasterSpNode, name, type, warpOb
   const slideMasterXfrmNode = getTextByPathList(slideMasterSpNode, xfrmList)
 
   const shapType = getTextByPathList(node, ['p:spPr', 'a:prstGeom', 'attrs', 'prst'])
-  if (name === '副标题 12') {
-
-  }
   const custShapType = getTextByPathList(node, ['p:spPr', 'a:custGeom'])
 
   const { top, left } = getPosition(slideXfrmNode, slideLayoutXfrmNode, slideMasterXfrmNode, warpObj.options.slideFactor)
-  const { width, height } = getSize(slideXfrmNode, slideLayoutXfrmNode, slideMasterXfrmNode, warpObj.options.slideFactor)
+  let { width, height } = getSize(slideXfrmNode, slideLayoutXfrmNode, slideMasterXfrmNode, warpObj.options.slideFactor)
 
+  // console.log(node, width, height)
   const isFlipV = getTextByPathList(slideXfrmNode, ['attrs', 'flipV']) === '1'
   const isFlipH = getTextByPathList(slideXfrmNode, ['attrs', 'flipH']) === '1'
 
@@ -689,16 +680,6 @@ function genShape(node, slideLayoutSpNode, slideMasterSpNode, name, type, warpOb
 
   const { borderColor, borderWidth, borderType, strokeDasharray } = getBorder(node, type, warpObj)
   const fillColor = getShapeFill(node, undefined, warpObj) || ''
-  if (node['p:txBody'] && fillColor === '') {
-    const ar = node['p:txBody']['a:p']['a:r']
-    let itemStyle
-    if (ar instanceof Array) {
-      itemStyle = ar[0]
-    }
-    else {
-      itemStyle = ar
-    }
-  }
 
   let shadow
   const outerShdwNode = getTextByPathList(node, ['p:spPr', 'a:effectLst', 'a:outerShdw'])
@@ -706,6 +687,7 @@ function genShape(node, slideLayoutSpNode, slideMasterSpNode, name, type, warpOb
 
   const vAlign = getVerticalAlign(node, slideLayoutSpNode, slideMasterSpNode, type)
   const isVertical = getTextByPathList(node, ['p:txBody', 'a:bodyPr', 'attrs', 'vert']) === 'eaVert'
+
   const data = {
     left,
     top,
@@ -739,16 +721,17 @@ function genShape(node, slideLayoutSpNode, slideMasterSpNode, name, type, warpOb
     }
   }
   if (shapType && type !== 'text' && type !== 'title' && type !== 'body') {
-    const result = {
+    return {
       ...data,
       type: 'shape',
       shapType,
     }
-    return result
   }
 
+  if (content.indexOf('01') !== -1 || content.indexOf('02') !== -1 || content.indexOf('03') !== -1 || content.indexOf('04') !== -1 || content.indexOf('05') !== -1 || content.indexOf('序号')) width = width + 15
   return {
     ...data,
+    width: width,
     type: 'text',
     isVertical,
     rotate: txtRotate,
@@ -761,7 +744,6 @@ async function processPicNode(node, warpObj, source) {
     if (source === 'slideMasterBg') resObj = warpObj['masterResObj']
     else if (source === 'slideLayoutBg') resObj = warpObj['layoutResObj']
     else resObj = warpObj['slideResObj']
-    console.log('KKKK:', node)
 
     const rid = node['p:blipFill']['a:blip']['attrs']['r:embed']
     const imgName = resObj[rid]['target']

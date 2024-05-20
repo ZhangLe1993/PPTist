@@ -19,19 +19,32 @@ export function genTextBody(textBodyNode, spNode, slideLayoutSpNode, type, warpO
 
   let text = ''
   let color
+
   try {
-    color = textBodyNode['a:lstStyle']['a:lvl1pPr']['a:defRPr']['a:solidFill']['a:srgbClr']['attrs']['val'];
+    color = textBodyNode['a:lstStyle']['a:lvl1pPr']['a:defRPr']['a:solidFill']['a:srgbClr']['attrs']['val']
   }
   catch (e) {
     // ignore
     try {
-      color = textBodyNode['a:p']['a:pPr']['a:defRPr']['a:solidFill']['a:srgbClr']['attrs']['val'];
+      color = textBodyNode['a:p']['a:pPr']['a:defRPr']['a:solidFill']['a:srgbClr']['attrs']['val']
     }
     catch (ex) {
       // ignore
     }
   }
-  // console.log(color)
+
+  let fontSize
+  try {
+    fontSize = parseInt(textBodyNode['a:lstStyle']['a:lvl1pPr']['a:defRPr']['attrs']['sz']) / 100
+  }
+  catch (e) {
+    try {
+      fontSize = parseInt(textBodyNode['a:p']['a:pPr']['a:defRPr']['attrs']['sz']) / 100
+    }
+    catch (ex) {
+      // ignore
+    }
+  }
 
   const pNode = textBodyNode['a:p']
   const pNodes = pNode.constructor === Array ? pNode : [pNode]
@@ -85,17 +98,17 @@ export function genTextBody(textBodyNode, spNode, slideLayoutSpNode, type, warpO
       text += `<p style="text-align: ${align};">`
     }
     
-    if (!rNode) text += genSpanElement(pNode, slideLayoutSpNode, type, warpObj, color)
+    if (!rNode) text += genSpanElement(pNode, slideLayoutSpNode, type, warpObj, color, fontSize)
     else {
       for (const rNodeItem of rNode) {
-        text += genSpanElement(rNodeItem, slideLayoutSpNode, type, warpObj, color)
+        text += genSpanElement(rNodeItem, slideLayoutSpNode, type, warpObj, color, fontSize)
       }
     }
 
     if (listType) text += '</li>'
     else text += '</p>'
   }
-  console.log(text)
+  // console.log(text)
   return text
 }
 
@@ -109,7 +122,7 @@ export function getListType(node) {
   return ''
 }
 
-export function genSpanElement(node, slideLayoutSpNode, type, warpObj, color) {
+export function genSpanElement(node, slideLayoutSpNode, type, warpObj, color, fontSize) {
   const slideMasterTextStyles = warpObj['slideMasterTextStyles']
 
   let text = node['a:t']
@@ -118,11 +131,12 @@ export function genSpanElement(node, slideLayoutSpNode, type, warpObj, color) {
 
   let styleText = ''
   let fontColor = getFontColor(node)
-  console.log(fontColor)
   if ((fontColor === undefined || fontColor === null || fontColor === '') && color !== undefined && color !== null && color !== '') {
-    fontColor = "#" + color
+    fontColor = '#' + color
   }
-  const fontSize = getFontSize(node, slideLayoutSpNode, type, slideMasterTextStyles, warpObj.options.fontsizeFactor)
+
+  const tryFontSize = getFontSize(node, slideLayoutSpNode, type, slideMasterTextStyles, warpObj.options.fontsizeFactor, fontSize)
+
   const fontType = getFontType(node, type, warpObj)
   const fontBold = getFontBold(node)
   const fontItalic = getFontItalic(node)
@@ -133,7 +147,7 @@ export function genSpanElement(node, slideLayoutSpNode, type, warpObj, color) {
   const subscript = getFontSubscript(node)
 
   if (fontColor) styleText += `color: ${fontColor};`
-  if (fontSize) styleText += `font-size: ${fontSize};`
+  if (tryFontSize) styleText += `font-size: ${tryFontSize};`
   if (fontType) styleText += `font-family: ${fontType};`
   if (fontBold) styleText += `font-weight: ${fontBold};`
   if (fontItalic) styleText += `font-style: ${fontItalic};`

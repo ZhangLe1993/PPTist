@@ -430,7 +430,6 @@ export default () => {
 
       let newSlides: Slide[] = []
       newSlides = slides.map((slide, index, arr) => {
-        console.log(slide.elements)
         let elements = slide.elements
         const map = new Map()
         for (let i = 0; i < elements.length; i++) {
