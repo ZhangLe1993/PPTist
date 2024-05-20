@@ -21,13 +21,14 @@ export function getFontType(node, type, warpObj) {
   return typeface || ''
 }
 
-export function getFontColor(node) {
+export function getFontColor(node, fontColor) {
   // TODO
   // title
   //
   // console.log(node)
   const color = getTextByPathList(node, ['a:rPr', 'a:solidFill', 'a:srgbClr', 'attrs', 'val'])
-  return color ? `#${color}` : ''
+  // console.log(color, fontColor)
+  return color ? `#${color}` : '#' + fontColor
 }
 
 export function getFontSize(node, slideLayoutSpNode, type, slideMasterTextStyles, fontsizeFactor, realSize) {

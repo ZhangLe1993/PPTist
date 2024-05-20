@@ -130,7 +130,7 @@ export function genSpanElement(node, slideLayoutSpNode, type, warpObj, color, fo
   if (typeof text !== 'string') text = '&nbsp;'
 
   let styleText = ''
-  let fontColor = getFontColor(node)
+  let fontColor = getFontColor(node, color)
   if ((fontColor === undefined || fontColor === null || fontColor === '') && color !== undefined && color !== null && color !== '') {
     fontColor = '#' + color
   }
